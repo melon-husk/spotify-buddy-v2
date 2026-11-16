@@ -65,11 +65,37 @@ A dark, auto-refreshing dashboard: album art, track/artist links into
 every 60 seconds, pauses while the tab is hidden, caches the access token until
 shortly before it expires, and retries once with a fresh token on a 401.
 
+### Pasting a token in the UI
+
+The server no longer needs a cookie up front. Open the page and paste either:
+
+- an **`sp_dc` cookie** — starts with `AQ`, valid for months, or
+- a **web access token** — starts with `BQ`, valid for about an hour.
+
+The type is detected automatically and validated with a real request before it is
+accepted; a rejected value leaves the previous credential untouched. Credentials
+pasted this way live in the server's **memory only** — nothing is written to
+disk, and a restart goes back to `SP_DC` / `.sp-dc`. Use the **Token** button in
+the header to replace one at any time.
+
+If a saved cookie is rejected (expired, or signed out everywhere), the page falls
+back to the paste panel with an explanation instead of showing an error.
+
 The server listens on `127.0.0.1` by default on purpose — the endpoint acts with
 your account, so it shouldn't be exposed to your network. Override with
 `HOST` / `PORT` if you know what you're doing.
 
-Routes: `GET /` (page) and `GET /api/activity` (JSON: `{ updatedAt, friends }`).
+Routes:
+
+| Route | Purpose |
+| --- | --- |
+| `GET /` | the page |
+| `GET /api/activity` | `{ updatedAt, friends }`, or `401 { needsCredential: true }` |
+| `GET /api/status` | `{ configured, kind, tokenExpiresAt }` |
+| `POST /api/credentials` | `{ token }` — cookie or access token, validated then kept in memory |
+| `DELETE /api/credentials` | forget the in-memory credential |
+
+Cross-origin writes are rejected, so a random web page can't plant a credential.
 
 ## CLI / library
 

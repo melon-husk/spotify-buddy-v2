@@ -195,6 +195,64 @@
     to   { background-position: -100% 0; }
   }
 
+  .connect {
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    padding: 22px;
+    margin-bottom: 16px;
+  }
+
+  .connect h2 { margin: 0 0 6px; font-size: 15px; font-weight: 650; }
+
+  .connect .hint {
+    margin: 0 0 16px;
+    color: var(--muted);
+    font-size: 13px;
+    max-width: 70ch;
+  }
+
+  .connect code {
+    background: #ffffff12;
+    border-radius: 4px;
+    padding: 1px 5px;
+    font-size: 12px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
+
+  .field { display: flex; gap: 8px; flex-wrap: wrap; }
+
+  .field input {
+    flex: 1 1 280px;
+    min-width: 0;
+    font: inherit;
+    font-size: 13px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    color: var(--text);
+    background: #0e0e0e;
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    padding: 9px 16px;
+    outline: none;
+  }
+
+  .field input:focus { border-color: #4a4a4a; background: #131313; }
+  .field input::placeholder { color: #5a5a5a; }
+
+  .field button.ghost { background: transparent; }
+
+  .connect-error {
+    margin: 12px 0 0;
+    color: #ffb4b4;
+    font-size: 13px;
+  }
+
+  .connect-note {
+    margin: 12px 0 0;
+    color: var(--dim);
+    font-size: 12px;
+  }
+
   .empty, .error {
     grid-column: 1 / -1;
     border: 1px solid var(--line);
@@ -247,11 +305,31 @@
     <h1><span class="dot" aria-hidden="true"></span>Friend Activity</h1>
     <span class="sub" id="summary">Loading…</span>
     <span class="spacer"></span>
+    <button id="settings" type="button">Token</button>
     <button id="refresh" type="button">Refresh</button>
   </div>
 </header>
 
 <main class="wrap">
+  <section id="connect" class="connect" hidden>
+    <h2>Connect to Spotify</h2>
+    <p class="hint">
+      Paste either an <code>sp_dc</code> cookie (starts with <code>AQ</code>, good for
+      months) or a web access token (starts with <code>BQ</code>, expires in about an
+      hour). It is detected automatically and kept in memory only.
+    </p>
+    <div class="field">
+      <input id="token" type="password" spellcheck="false" autocomplete="off" placeholder="AQ… or BQ…">
+      <button id="reveal" class="ghost" type="button">Show</button>
+      <button id="connect-btn" type="button">Connect</button>
+    </div>
+    <p id="connect-error" class="connect-error" hidden></p>
+    <p class="connect-note">
+      Nothing is written to disk. To keep a cookie across restarts, put it in
+      <code>.sp-dc</code> or set <code>SP_DC</code>.
+    </p>
+  </section>
+
   <div id="grid" class="grid"></div>
   <footer id="footer">Auto-refreshes every 60 seconds</footer>
 </main>
@@ -261,6 +339,12 @@
   const summary = document.getElementById('summary')
   const footer = document.getElementById('footer')
   const refresh = document.getElementById('refresh')
+  const settings = document.getElementById('settings')
+  const connect = document.getElementById('connect')
+  const tokenInput = document.getElementById('token')
+  const connectBtn = document.getElementById('connect-btn')
+  const connectError = document.getElementById('connect-error')
+  const reveal = document.getElementById('reveal')
 
   const REFRESH_MS = 60 * 1000
   const TICK_MS = 20 * 1000
@@ -438,8 +522,17 @@
       const resp = await fetch('/api/activity', { cache: 'no-store' })
       const data = await resp.json()
 
+      if (resp.status === 401 && data.needsCredential) {
+        lastUpdated = null
+        grid.replaceChildren()
+        summary.textContent = 'Not connected'
+        showConnect(data.error)
+        return
+      }
+
       if (!resp.ok) throw new Error(data.error || ('HTTP ' + resp.status))
 
+      hideConnect()
       lastUpdated = data.updatedAt || Date.now()
       render(data.friends || [])
       summary.textContent = (data.friends || []).length + ' friend' +
@@ -454,7 +547,90 @@
     }
   }
 
+  function showConnect (message) {
+    connect.hidden = false
+
+    if (message) {
+      connectError.textContent = message
+      connectError.hidden = false
+    } else {
+      connectError.hidden = true
+    }
+
+    tokenInput.focus()
+  }
+
+  function hideConnect () {
+    connect.hidden = true
+    connectError.hidden = true
+    tokenInput.value = ''
+    tokenInput.type = 'password'
+    reveal.textContent = 'Show'
+  }
+
+  async function connectWithToken () {
+    const token = tokenInput.value.trim()
+
+    if (!token) {
+      connectError.textContent = 'Paste a cookie or access token first.'
+      connectError.hidden = false
+      return
+    }
+
+    connectBtn.disabled = true
+    connectBtn.textContent = 'Checking…'
+    connectError.hidden = true
+
+    try {
+      const resp = await fetch('/api/credentials', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token })
+      })
+      const data = await resp.json()
+
+      if (!resp.ok) throw new Error(data.error || ('HTTP ' + resp.status))
+
+      hideConnect()
+      lastUpdated = null
+      await load()
+    } catch (err) {
+      connectError.textContent = err.message
+      connectError.hidden = false
+    } finally {
+      connectBtn.disabled = false
+      connectBtn.textContent = 'Connect'
+    }
+  }
+
+  async function init () {
+    try {
+      const resp = await fetch('/api/status', { cache: 'no-store' })
+      const status = await resp.json()
+
+      if (!status.configured) {
+        summary.textContent = 'Not connected'
+        showConnect()
+        return
+      }
+    } catch (err) {
+      // let load() surface the problem instead
+    }
+
+    await load()
+  }
+
   refresh.addEventListener('click', load)
+  settings.addEventListener('click', () => showConnect())
+  connectBtn.addEventListener('click', connectWithToken)
+  tokenInput.addEventListener('keydown', (event) => {
+    if (event.key === 'Enter') connectWithToken()
+  })
+  reveal.addEventListener('click', () => {
+    const hidden = tokenInput.type === 'password'
+    tokenInput.type = hidden ? 'text' : 'password'
+    reveal.textContent = hidden ? 'Hide' : 'Show'
+  })
 
   setInterval(() => {
     if (!document.hidden) load()
@@ -466,7 +642,7 @@
     if (!document.hidden) load()
   })
 
-  load()
+  init()
 </script>
 
 </body>
