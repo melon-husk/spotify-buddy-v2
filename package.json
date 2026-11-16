@@ -1,18 +1,26 @@
 {
-  "name": "spotify-buddylist",
-  "version": "3.0.0",
-  "description": "Fetch the friend activity Spotify feed.",
+  "name": "spotify-buddy-v2",
+  "version": "3.1.0",
+  "description": "The Spotify friend activity feed, with a web UI. Fork of spotify-buddylist.",
   "license": "Unlicense",
   "author": "Val (http://val.codejam.info)",
-  "files": [
-    "index.js"
+  "contributors": [
+    "melon-husk (https://github.com/melon-husk)"
   ],
-  "repository": "valeriangalliat/spotify-buddylist",
-  "scripts": {
-    "lint": "standard"
+  "private": true,
+  "files": [
+    "index.js",
+    "cookie.js",
+    "server.js",
+    "public"
+  ],
+  "repository": "melon-husk/spotify-buddy-v2",
+  "engines": {
+    "node": ">=18"
   },
-  "dependencies": {
-    "otplib": "^12.0.1"
+  "scripts": {
+    "start": "node server.js",
+    "lint": "standard"
   },
   "devDependencies": {
     "standard": "^17.1.2"

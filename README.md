@@ -1,200 +1,143 @@
-# spotify-buddylist [![npm version](http://img.shields.io/npm/v/spotify-buddylist.svg?style=flat-square)](https://www.npmjs.org/package/spotify-buddylist)
+# spotify-buddy-v2
 
-> Fetch the friend activity Spotify feed.
+> The Spotify friend activity feed, plus a small web UI — no official API required.
 
-**Note:** don't know how to code? Check the [extra info](#dont-know-how-to-code)
-at the bottom!
+**This is a fork of [`spotify-buddylist`](https://github.com/valeriangalliat/spotify-buddylist)
+by [Val](https://val.codejam.info).** The original library, the `sp_dc` cookie
+approach, and the TOTP technique are all his work. This fork keeps the same
+two-function API and adds:
 
-## Overview
+- a fix for Spotify's current token flow (TOTP v61 / `totpServer` / `/api/token`);
+- a dependency-free web UI (`npm start`).
 
-The [Spotify API](https://developer.spotify.com/documentation/web-api/)
-doesn't include a way to fetch the friend activity feed that's
-available on the right of the desktop app.
+Licensed under the [Unlicense](./LICENSE), same as upstream.
 
-There's an [issue on the spotify/web-api repository](https://github.com/spotify/web-api/issues/83)
-about that, where a number of people request access to this endpoint
-since 2015, but it was closed this summer 2020 without any plan to give
-access to this feature through the official API.
+## Why this fork exists
 
-Because I want to fetch this data and I don't like being told no, this
-repo is a wrapper around the unofficial API that the app calls to fetch
-the friend activity feed.
+Spotify changed the token flow and the upstream library broke in three places:
 
-Since the calls are pretty trivial, it's mostly there for public
-documentation purpose rather than to really be used as a library, but I
-still made it available on npm in case you quickly want to put together
-something with this.
+| What upstream used | What works now |
+| --- | --- |
+| `GET /server-time` | `GET /api/server-time` |
+| `GET /get_access_token` (hard-403'd now) | `GET /api/token` |
+| `totpVer=5`, `totp` only | `totpVer=61`, needs `totp` **and** `totpServer` |
 
-The only dependency is [node-fetch](https://github.com/node-fetch/node-fetch)
-to make HTTP requests.
+The old TOTP version still returns a `totpVerExpired` error wrapped in a
+"not permitted under the Spotify Developer Terms" note. That reads like a
+permanent shutdown, but it is really a version rejection: bumping the version
+and adding `totpServer` makes `/api/token` return a normal access token again.
 
-## Usage
+## Requirements
 
-To use this API, you need to get a web player access token, not a
-regular API access token, so you can't use the official API way of
-logging in, getting and refreshing tokens.
+Node.js 18+ (for built-in `fetch`). The runtime has **no dependencies** —
+`npm install` is only needed if you want to run the linter.
 
-The good news is that if you don't mind logging in on the web player and
-refreshing a value in your code once a year, it's actually quite easier
-than the official OAuth way. More on that [below](#sp_dc-cookie).
+## Getting your `sp_dc` cookie
 
-```js
-const buddyList = require('spotify-buddylist')
+1. Log in to the [web player](https://open.spotify.com/).
+2. Open your browser dev tools → **Application** → **Storage** → **Cookies** →
+   `https://open.spotify.com`.
+3. Copy the value of the cookie named `sp_dc`.
 
-async function main () {
-  const spDcCookie = 'put your cookie here'
+This cookie is a **full-account session credential**. Treat it like a password:
+never commit it, and sign out everywhere if it leaks.
 
-  const { accessToken } = await buddyList.getWebAccessToken(spDcCookie)
-  const friendActivity = await buddyList.getFriendActivity(accessToken)
+Then either export it:
 
-  console.log(friendActivity)
-}
-
-main()
+```sh
+# PowerShell
+$env:SP_DC = 'AQ...'
+# bash
+export SP_DC='AQ...'
 ```
 
-The output looks like:
+or put it in a `.sp-dc` file at the repo root (git-ignored).
+
+## Web UI
+
+```sh
+npm start
+# Friend activity UI: http://127.0.0.1:3000
+```
+
+A dark, auto-refreshing dashboard: album art, track/artist links into
+`open.spotify.com`, the playlist context, and relative timestamps. It refreshes
+every 60 seconds, pauses while the tab is hidden, caches the access token until
+shortly before it expires, and retries once with a fresh token on a 401.
+
+The server listens on `127.0.0.1` by default on purpose — the endpoint acts with
+your account, so it shouldn't be exposed to your network. Override with
+`HOST` / `PORT` if you know what you're doing.
+
+Routes: `GET /` (page) and `GET /api/activity` (JSON: `{ updatedAt, friends }`).
+
+## CLI / library
+
+```sh
+node example.js
+```
+
+```js
+const buddyList = require('./')
+
+const { accessToken } = await buddyList.getWebAccessToken(spDcCookie)
+const friendActivity = await buddyList.getFriendActivity(accessToken)
+```
+
+`friendActivity` looks like:
 
 ```json
 {
   "friends": [
     {
       "timestamp": 1600773735000,
-      "user": {
-        "uri": "spotify:user:shaktirockgym",
-        "name": "shaktirockgym"
-      },
+      "user": { "uri": "spotify:user:shaktirockgym", "name": "shaktirockgym" },
       "track": {
         "uri": "spotify:track:51xHvAUYQfhY29GcGlBM0n",
-        "name": "Piano Sonata No. 16 in C Major, K. 545 \"Sonata facile\": 1. Allegro",
-        "imageUrl": "http://i.scdn.co/image/ab67616d0000b273bf4b533ee6e9634a6fcd8882",
-        "album": {
-          "uri": "spotify:album:1XORY4rQNhqkZxTze6Px90",
-          "name": "Piano Book (Deluxe Edition)"
-        },
-        "artist": {
-          "uri": "spotify:artist:4NJhFmfw43RLBLjQvxDuRS",
-          "name": "Wolfgang Amadeus Mozart"
-        },
-        "context": {
-          "uri": "spotify:user:spotify:playlist:37i9dQZF1E4riV8HyBkA7r",
-          "name": "Wolfgang Amadeus Mozart Radio",
-          "index": 0
-        }
+        "name": "Piano Sonata No. 16 in C Major, K. 545",
+        "imageUrl": "https://i.scdn.co/image/ab67616d0000b273bf4b533ee6e9634a6fcd8882",
+        "album": { "uri": "spotify:album:1XORY4rQNhqkZxTze6Px90", "name": "Piano Book" },
+        "artist": { "uri": "spotify:artist:4NJhFmfw43RLBLjQvxDuRS", "name": "Wolfgang Amadeus Mozart" },
+        "context": { "uri": "spotify:playlist:37i9dQZF1E4riV8HyBkA7r", "name": "Mozart Radio", "index": 0 }
       }
     }
   ]
 }
 ```
 
-## `sp_dc` cookie
+Tokens are valid for about an hour (`accessTokenExpirationTimestampMs`); call
+`getWebAccessToken` again to refresh.
 
-This is the only value that you need for this to work. After you login
-on the [web player] (which I don't automate because reCAPTCHA), you get
-a bunch of cookies, including one named `sp_dc`.
+## When it breaks again
 
-[web player]: https://open.spotify.com/
+Spotify rotates the TOTP secret every so often, and this library will stop
+working when they move past v61. The repair is quick — the secret is in the
+public web player bundle:
 
-Seems like it's valid for one year, and with just that value you can
-call anytime an endpoint that gives you a refreshed, elevated API access
-token, that, unlike the official API ones, will let you query the
-undocumented endpoint that retrieves the friend activity.
+1. Download `https://open.spotify.com/` and note the `web-player.<hash>.js`
+   script it loads from `open.spotifycdn.com`.
+2. Search that file for `let ej=[{secret:`.
+3. Copy the newest `{ secret: '...', version: N }` pair into `SECRETS` in
+   [`index.js`](./index.js), newest first.
 
-## Usage with spotify-web-api-node
+The secret is transformed before use (each character is XORed with
+`(index % 33) + 9`); [`index.js`](./index.js) already does that, so you only
+need to paste the literal string and version.
 
-You might already be using the [spotify-web-api-node](https://github.com/thelinmichael/spotify-web-api-node)
-package to use the official API.
+## Legal
 
-To authenticate using the `sp_dc` cookie:
+This uses an unofficial endpoint. Spotify's own response states that *"usage of
+this endpoint is not permitted under the Spotify Developer Terms and Developer
+Policy, and applicable law."* There is no official API for the friend activity
+feed ([spotify/web-api#83](https://github.com/spotify/web-api/issues/83)), so
+this works by pretending to be the web player.
 
-```js
-const SpotifyWebApi = require('spotify-web-api-node')
-const buddyList = require('spotify-buddylist')
+Use it for personal use, at your own risk, and don't be surprised if it breaks
+or gets blocked.
 
-const api = new SpotifyWebApi()
+## Credits
 
-const tokenResponse = await buddyList.getWebAccessToken(config.spotify.spDcCookie)
-
-api.setAccessToken(tokenResponse.accessToken)
-```
-
-Should your script run more than the token response's
-`accessTokenExpirationTimestampMs` (currently an hour), I would suggest
-implementing token refresh logic which is just calling
-`getWebAccessToken` and `setAccessToken` again like above.
-
-## Don't know how to code?
-
-If the documentation above doesn't make much sense to you, here's a
-couple extra information you might find useful. 🙏
-
-Because spotify-buddylist is a library, it's meant to be used by *other
-programs*, and it doesn't makes any assumption on how it's going to be
-used. You're free to *code* a program that automatically populates
-another playlist, sends you a notification when a specific friend plays
-a specific song, feeds an online spreadsheet, or just appends to a local
-file.
-
-But don't worry, if you don't know how to code, you can still use the
-[example](example.js) that just displays the data when you run it. The
-following steps will show you how to do that.
-
-### Installing
-
-Because this library is built with [Node.js](https://nodejs.org/),
-you'll need to install it first.
-
-Then, [download the archive for this repository](https://github.com/valeriangalliat/spotify-buddylist/archive/refs/heads/master.zip)
-and extract it.
-
-Open a terminal, go in the spotify-buddylist directory that you just
-extracted, and run:
-
-```sh
-npm install
-```
-
-This will install the extra dependencies needed for the program to run.
-
-### Fetching the cookie
-
-Then you'll need to grab your `sp_dc` cookie from Spotify. This is a
-requirement because Spotify doesn't allow third-party apps to get the
-friend activity feed, so this cookie allows us to pretend that we're the
-Spotify app itself to get access to that data.
-
-For that, login on the [web player] and open your browser's web
-developer tools. It's usually in "settings", "more tools", "developer
-tools". In that pane, go in "application", "storage", "cookies",
-`https://open.spotify.com` (or something close to that depending on your
-browser).
-
-You'll find a cookie named `sp_dc`. Copy its value.
-
-### Running the example
-
-In the spotify-buddylist directory, open `example.js` with any text
-editor, and paste the cookie value in place of the text "put your cookie
-here".
-
-Now, you can run the following command to execute the script:
-
-```sh
-node example.js
-```
-
-This will display the JSON response from Spotify (once).
-
-If you want to run it periodically, you can uncomment the last line of
-the file (remove the `//` from the beginning of the line and save the
-file) and run the above command again. Now the script will run
-indefinitely, fetching new data every minute and appending it to the
-terminal output.
-
-That should be enough to get you started! 🎉
-
-If you want to do more things with that, you might want to learn a
-little bit of JavaScript. Programming is powerful, and will allow you to
-do the things that *you* want to do with your computer, instead of being
-limited to the things that someone else decided that you should be able
-to do. Enjoy!
+- [Val](https://val.codejam.info) — original
+  [`spotify-buddylist`](https://github.com/valeriangalliat/spotify-buddylist):
+  the library design, the `sp_dc` approach, and the TOTP method.
+- [melon-husk](https://github.com/melon-husk) — current token flow and the web UI.

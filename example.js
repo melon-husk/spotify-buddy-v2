@@ -1,9 +1,8 @@
 const buddyList = require('./')
+const loadCookie = require('./cookie')
 
 async function main () {
-  const spDcCookie = 'put your cookie here'
-
-  const accessTokenInfo = await buddyList.getWebAccessToken(spDcCookie)
+  const accessTokenInfo = await buddyList.getWebAccessToken(loadCookie())
 
   console.log('Access token:', JSON.stringify(accessTokenInfo))
 
@@ -12,7 +11,10 @@ async function main () {
   console.log(JSON.stringify(friendActivity, null, 2))
 }
 
-main()
+main().catch((err) => {
+  console.error(err.message)
+  process.exit(1)
+})
 
 // Run every minute
 // setInterval(() => main(), 1000 * 60)
