@@ -318,6 +318,10 @@
       months) or a web access token (starts with <code>BQ</code>, expires in about an
       hour). It is detected automatically and kept in memory only.
     </p>
+    <p class="hint">
+      The feed is <strong>per account</strong>: use the cookie of the account whose
+      friends you want to see — a different login sees a different friend list.
+    </p>
     <div class="field">
       <input id="token" type="password" spellcheck="false" autocomplete="off" placeholder="AQ… or BQ…">
       <button id="reveal" class="ghost" type="button">Show</button>
@@ -534,9 +538,12 @@
 
       hideConnect()
       lastUpdated = data.updatedAt || Date.now()
-      render(data.friends || [])
-      summary.textContent = (data.friends || []).length + ' friend' +
-        ((data.friends || []).length === 1 ? '' : 's') + ' · updated ' + timeAgo(lastUpdated)
+
+      const friends = data.friends || []
+
+      render(friends)
+      summary.textContent = friends.length + ' friend' +
+        (friends.length === 1 ? '' : 's') + ' · updated ' + timeAgo(lastUpdated)
       footer.textContent = 'Auto-refreshes every 60 seconds'
     } catch (err) {
       errorCard(err.message)
